@@ -1,0 +1,7 @@
+https://blog.quantinsti.com/long-short-equity-strategy/
+
+https://www.schwab.com/learn/story/how-to-trade-simple-moving-averages
+
+https://medium.com/@avikumart_/time-series-analysis-and-stock-price-forecast-modeling-all-you-need-to-know-fe66c06e50ae
+
+https://www.kaggle.com/code/prashant111/complete-guide-on-time-series-analysis-in-python
