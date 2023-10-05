@@ -7,3 +7,6 @@ ts = TimeSeries(key, output_format='pandas')
 
 
 airbus_ts, meta = ts.get_daily('AIR.PA', outputsize='full')
+print(airbus_ts)
+
+
