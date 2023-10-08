@@ -12,4 +12,4 @@ test = airbus_close.iloc[59:89]
 sma_pred = train.rolling(window=5).mean()
 
 # TODO CY: add MSE between test and sma_pred
-# np.sqrt(mean_squared_error(sma_pred, train)
+# np.sqrt(mean_squared_error(sma_pred, test)
