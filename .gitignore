@@ -3,3 +3,9 @@
 
 # Ada Library Information
 *.ali
+
+# Python files
+/run.py
+
+# Data
+/data/*
