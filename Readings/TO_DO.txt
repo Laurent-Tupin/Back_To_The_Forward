@@ -1,3 +1,6 @@
 Try to include in the project at the end
  - Docker
  - Kubernetes
+
+
+Claudia: add function to identify peak and trough of a series
