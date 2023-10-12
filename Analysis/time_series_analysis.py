@@ -59,12 +59,13 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int,):
     all_cross_dates = [first_date] + cross_dates + [last_date]
     stock_df['sequence'] = range(0, (stock.size - long_mean + 1))
 
-    res_dfs = []
+    peak_dfs = []
+    trough_dfs = []
     for d in range(0, len(all_cross_dates) - 1):
         rows = range(stock_df.loc[all_cross_dates[d], 'sequence'],
                      stock_df.loc[all_cross_dates[d + 1], 'sequence'] - 1)
         # TODO CY: place minimum window length in config
-        if len(rows) > 10:
+        if len(rows) > config.min_peak_trough_window:
             local_df = stock_df.iloc[rows].copy()
             local_df['percentage_diff'] = local_df['short_SMA'].divide(local_df['long_SMA']) - 1
             max_percentage_diff_date = local_df.loc[
@@ -76,23 +77,31 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int,):
             min_price_date = local_df.loc[
                 (local_df[config.stock_price_col] == local_df[config.stock_price_col].min()),
                 'sequence'].values[0]
-            use_date = max_price_date
-            if (local_df['percentage_diff'] < 0).all():
-                use_date = min_price_date
-            # TODO CY: find a more solid way to define a bound between maximum percentage_diff and highest/lowest price
-            if abs(max_percentage_diff_date - use_date) < np.round(local_df.shape[0] / 4.):
-                res_dfs.append(local_df.loc[local_df['sequence'] == use_date, config.stock_price_col])
 
-    peak_trough = pd.concat(res_dfs)
+            # TODO CY: find a more solid way to define a bound between maximum percentage_diff and highest/lowest price
+            def peak_trough_condition(use_date):
+             return abs(max_percentage_diff_date - use_date) < np.round(local_df.shape[0] / 2.)
+
+            if (local_df['percentage_diff'] < 0).all() & peak_trough_condition(min_price_date):
+                trough_dfs.append(local_df.loc[local_df['sequence'] == min_price_date, config.stock_price_col])
+            elif (local_df['percentage_diff'] >= 0).all() & peak_trough_condition(max_price_date):
+                peak_dfs.append(local_df.loc[local_df['sequence'] == max_price_date, config.stock_price_col])
+
+    peak_df = pd.concat(peak_dfs)
+    trough_df = pd.concat(trough_dfs)
+    
+    final_df = pd.concat([pd.DataFrame(peak_df).assign(feature="peak"),
+                          pd.DataFrame(trough_df).assign(feature="trough")]).sort_index()
 
     plt.figure()
     plt.plot(stock_df['long_SMA'], label="long_mean")
     plt.plot(stock_df['short_SMA'], label="short_mean")
     plt.plot(stock_df[config.stock_price_col])
-    plt.plot(peak_trough, 'o')
+    plt.plot(peak_df, 'o')
+    plt.plot(trough_df, 'o')
     plt.show()
 
-    return peak_trough
+    return final_df
 
 
 
