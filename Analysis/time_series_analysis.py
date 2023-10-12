@@ -58,6 +58,5 @@ def identify_series_crossing(stock: pd.Series, long_mean: int, short_mean: int):
     new_df = new_df.iloc[1:]
     cross = ((short_higher_t + short_higher_tp1) == 1).rename("cross")
     new_df = pd.concat([new_df, pd.DataFrame(cross).set_index(new_df.index)], axis=1)
-    new_df.loc[new_df['cross']].index.to_list()
 
     return new_df.loc[new_df['cross']].index.to_list()
