@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import config
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 from Data_processing.get_market_data import load_stock_price
@@ -39,24 +40,60 @@ def SMA_window_with_lowest_MSE(ticker, stock_price_col, length_train, min_window
     return int(MSE_df.loc[min_MSE, 'window_length'].iloc[0]), np.min(MSE_df['MSE'])
 
 
-def plot_two_SMA(stock: pd.Series, long_mean: int, short_mean: int):
-    plt.figure()
-    plt.plot(stock.rolling(window=long_mean).mean(), label="long_mean")
-    plt.plot(stock.rolling(window=short_mean).mean(), label="short_mean")
-    plt.plot(stock)
+def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int,):
 
-
-def identify_series_crossing(stock: pd.Series, long_mean: int, short_mean: int):
     long_SMA = stock.rolling(window=long_mean).mean().dropna().rename("long_SMA")
-    short_SMA = stock.rolling(window=short_mean).mean().iloc[(long_mean-1):].rename("short_SMA")
-    new_df = pd.concat([long_SMA, short_SMA], axis=1)
+    short_SMA = stock.rolling(window=short_mean).mean().iloc[(long_mean - 1):].rename("short_SMA")
+    stock_df = pd.concat([stock.iloc[(long_mean - 1):], long_SMA, short_SMA], axis=1)
 
-    short_higher = new_df.apply(lambda x: (1 if (x['long_SMA'] < x['short_SMA']) else 0), axis=1)
+    short_higher = stock_df.apply(lambda x: (1 if (x['long_SMA'] < x['short_SMA']) else 0), axis=1)
     short_higher_t = short_higher.iloc[1:].reset_index(drop=True)
     short_higher_tp1 = short_higher.iloc[:-1].reset_index(drop=True)
 
-    new_df = new_df.iloc[1:]
-    cross = ((short_higher_t + short_higher_tp1) == 1).rename("cross")
-    new_df = pd.concat([new_df, pd.DataFrame(cross).set_index(new_df.index)], axis=1)
+    cross = pd.DataFrame(((short_higher_t + short_higher_tp1) == 1).rename("cross")). \
+        set_index(stock_df.iloc[1:].index)
+    cross_dates = cross.loc[cross['cross']].index.to_list()
 
-    return new_df.loc[new_df['cross']].index.to_list()
+    first_date = stock_df.index[0]
+    last_date = stock_df.index[-1]
+    all_cross_dates = [first_date] + cross_dates + [last_date]
+    stock_df['sequence'] = range(0, (stock.size - long_mean + 1))
+
+    res_dfs = []
+    for d in range(0, len(all_cross_dates) - 1):
+        rows = range(stock_df.loc[all_cross_dates[d], 'sequence'],
+                     stock_df.loc[all_cross_dates[d + 1], 'sequence'] - 1)
+        # TODO CY: place minimum window length in config
+        if len(rows) > 10:
+            local_df = stock_df.iloc[rows].copy()
+            local_df['percentage_diff'] = local_df['short_SMA'].divide(local_df['long_SMA']) - 1
+            max_percentage_diff_date = local_df.loc[
+                (local_df['percentage_diff'].abs() == local_df['percentage_diff'].abs().max()),
+                'sequence'].values[0]
+            max_price_date = local_df.loc[
+                (local_df[config.stock_price_col] == local_df[config.stock_price_col].max()),
+                'sequence'].values[0]
+            min_price_date = local_df.loc[
+                (local_df[config.stock_price_col] == local_df[config.stock_price_col].min()),
+                'sequence'].values[0]
+            use_date = max_price_date
+            if (local_df['percentage_diff'] < 0).all():
+                use_date = min_price_date
+            # TODO CY: find a more solid way to define a bound between maximum percentage_diff and highest/lowest price
+            if abs(max_percentage_diff_date - use_date) < np.round(local_df.shape[0] / 4.):
+                res_dfs.append(local_df.loc[local_df['sequence'] == use_date, config.stock_price_col])
+
+    peak_trough = pd.concat(res_dfs)
+
+    plt.figure()
+    plt.plot(stock_df['long_SMA'], label="long_mean")
+    plt.plot(stock_df['short_SMA'], label="short_mean")
+    plt.plot(stock_df[config.stock_price_col])
+    plt.plot(peak_trough, 'o')
+    plt.show()
+
+    return peak_trough
+
+
+
+
