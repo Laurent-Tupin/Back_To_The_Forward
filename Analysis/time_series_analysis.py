@@ -63,7 +63,8 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int,):
     trough_dfs = []
     for d in range(0, len(all_cross_dates) - 1):
         rows = range(stock_df.loc[all_cross_dates[d], 'sequence'],
-                     stock_df.loc[all_cross_dates[d + 1], 'sequence'] - 1)
+                     stock_df.loc[all_cross_dates[d + 1], 'sequence'])
+
         # TODO CY: place minimum window length in config
         if len(rows) > config.min_peak_trough_window:
             local_df = stock_df.iloc[rows].copy()
@@ -89,7 +90,6 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int,):
 
     peak_df = pd.concat(peak_dfs)
     trough_df = pd.concat(trough_dfs)
-    
     final_df = pd.concat([pd.DataFrame(peak_df).assign(feature="peak"),
                           pd.DataFrame(trough_df).assign(feature="trough")]).sort_index()
 
