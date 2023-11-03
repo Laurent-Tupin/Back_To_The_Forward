@@ -1,7 +1,11 @@
 import numpy as np
 import pandas as pd
-import config
 import matplotlib.pyplot as plt
+from statsmodels.tsa.ar_model import AutoReg
+from datetime import datetime as dt
+
+import config
+from utils.time_series_utils import calc_pairwise
 
 from sklearn.metrics import mean_squared_error
 from Data_processing.get_market_data import load_stock_price
@@ -51,8 +55,7 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int, plot_fre
     # to avoid using a for loop, create a series to determine when x['long_SMA'] < x['short_SMA'
     # then replicate the series and shift it by one to do pairwise comparison
     short_higher = stock_df.apply(lambda x: (1 if (x['long_SMA'] < x['short_SMA']) else 0), axis=1)
-    short_higher_t = short_higher.iloc[1:].reset_index(drop=True)
-    short_higher_tp1 = short_higher.iloc[:-1].reset_index(drop=True)
+    short_higher_t, short_higher_tp1 = calc_pairwise(short_higher)
 
     # (short_higher_t + short_higher_tp1) = 0 means long_SMA[t] > short_SMA[t] and long_SMA[t+1] > short_SMA[t+1]
     # (short_higher_t + short_higher_tp1) = 1 means long_SMA[t] > short_SMA[t] and long_SMA[t+1] < short_SMA[t+1]
@@ -122,8 +125,7 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int, plot_fre
     ).set_index('date').drop(columns='group')
 
     plt.figure()
-    plt.plot(stock_df['long_SMA'], label="long_mean")
-    plt.plot(stock_df['short_SMA'], label="short_mean")
+    # plt.plot(stock_df['long_SMA'], label="long_mean")
     plt.plot(stock_df[config.stock_price_col])
     plt.plot(final_df.loc[final_df['feature'] == 'peak'][config.stock_price_col], 'o')
     plt.plot(final_df.loc[final_df['feature'] == 'trough'][config.stock_price_col], 'o')
@@ -131,3 +133,28 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int, plot_fre
     plt.show()
 
     return final_df
+
+
+
+def predict_next_turning_point(df: pd.DataFrame, lag: int):
+    index0 = pd.to_datetime(df.index)
+
+    df.index = pd.DatetimeIndex(df.index).to_period('D')
+    date_0, date_1 = calc_pairwise(df.index)
+    date_diff = date_1.astype('int64') - date_0.astype('int64')
+
+    mod_price = AutoReg(df[config.stock_price_col], lag)
+    res_price = mod_price.fit()
+    mod_date = AutoReg(date_diff, lag)
+    res_date = mod_date.fit()
+
+    starting_point = (df.index[-1] - df.index[0]).n + 1
+    ending_point = starting_point
+    price_pred = res_price.predict(starting_point, ending_point).reset_index(drop=True)[0]
+    date_pred = res_date.predict(starting_point, ending_point).reset_index(drop=True)[0]
+
+    next_date = dt.strftime((pd.DateOffset(days=round(date_pred)) + index0[-1]), "%Y-%m-%d")
+    prediction = pd.DataFrame({config.stock_price_col: [price_pred]}, index=[next_date])
+
+    return prediction
+
