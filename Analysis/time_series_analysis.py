@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.ar_model import AutoReg
+from sklearn.linear_model import LinearRegression
 from datetime import datetime as dt
 
 import config
@@ -113,8 +114,8 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int, plot_fre
     group = [group_pt]
     for pt in range(1, peak_trough_df.shape[0]):
         if peak_trough_df.iloc[pt]['feature'] != peak_trough_df.iloc[pt - 1]['feature']:
-            group_pt = group_pt + 1
-        group = group + [group_pt]
+            group_pt += 1
+        group += [group_pt]
 
     peak_trough_df['group'] = group
     unique_pt_df = peak_trough_df.groupby(['group', 'feature'])['percentage_diff'].max()
@@ -137,24 +138,45 @@ def find_peak_trough(stock: pd.Series, long_mean: int, short_mean: int, plot_fre
 
 
 def predict_next_turning_point(df: pd.DataFrame, lag: int):
-    index0 = pd.to_datetime(df.index)
+    index_peak = pd.to_datetime(df.loc[df['feature'] == "peak"].index)
+    index_trough = pd.to_datetime(df.loc[df['feature'] == "trough"].index)
 
     df.index = pd.DatetimeIndex(df.index).to_period('D')
     date_0, date_1 = calc_pairwise(df.index)
     date_diff = date_1.astype('int64') - date_0.astype('int64')
+    date_diff = date_diff.rename('date_diff')
 
-    mod_price = AutoReg(df[config.stock_price_col], lag)
-    res_price = mod_price.fit()
-    mod_date = AutoReg(date_diff, lag)
-    res_date = mod_date.fit()
+    pt_0, pt_1 = calc_pairwise(df[config.stock_price_col])
+    pt_diff = pt_1 - pt_0
+    pt_diff = pt_diff.rename('pt_diff')
 
-    starting_point = (df.index[-1] - df.index[0]).n + 1
-    ending_point = starting_point
-    price_pred = res_price.predict(starting_point, ending_point).reset_index(drop=True)[0]
-    date_pred = res_date.predict(starting_point, ending_point).reset_index(drop=True)[0]
+    new_df = df.iloc[1:].merge(
+        date_diff.to_frame().set_index(df.iloc[1:].index), left_index=True, right_index=True
+    ).merge(
+        pt_diff.to_frame().set_index(df.iloc[1:].index), left_index=True, right_index=True
+    )
 
-    next_date = dt.strftime((pd.DateOffset(days=round(date_pred)) + index0[-1]), "%Y-%m-%d")
-    prediction = pd.DataFrame({config.stock_price_col: [price_pred]}, index=[next_date])
+    def next_turning_point(peak_or_trough, index_pt):
+        pt_df = new_df.loc[new_df['feature'] == peak_or_trough]
+        mod_price = AutoReg(pt_df.reset_index()[config.stock_price_col], lag)
+        res_price = mod_price.fit()
+        n = pt_df.shape[0]
+        price_pred = res_price.predict(n, n).iloc[0]
+        mod_date = LinearRegression().fit(
+            np.array([pt_df[config.stock_price_col]]).reshape((-1,1)),
+            np.array(pt_df['date_diff'])
+        )
+        days_to_next_turn = mod_date.predict(np.array(price_pred).reshape((-1,1)))[0]
+        next_turn_date = dt.strftime((pd.DateOffset(days=round(days_to_next_turn)) + index_pt[-1]), "%Y-%m-%d")
+        prediction_turn = pd.DataFrame(
+            {config.stock_price_col: [price_pred], 'feature': [peak_or_trough]},
+            index=[next_turn_date]
+        )
+        return prediction_turn
 
-    return prediction
+    peak_prediction = next_turning_point("peak", index_peak)
+    trough_prediction = next_turning_point("trough", index_trough)
 
+    turning_point = pd.concat([peak_prediction, trough_prediction]).sort_index()
+
+    return turning_point
